@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: edu-platform-apps
+  namespace: argocd
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/Shahat112/shahat112-project.git
+      revision: HEAD
+      directories:
+      - path: edu-platform-gitops/kubernetes/applications/*
+  template:
+    metadata:
+      name: '{{path.basename}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/Shahat112/shahat112-project.git
+        targetRevision: HEAD
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: edu-platform
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

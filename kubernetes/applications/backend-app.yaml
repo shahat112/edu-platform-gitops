@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: edu-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: nginx:alpine  # Замените на ваш образ
+        ports:
+        - containerPort: 8080
+        env:
+        - name: POSTGRES_HOST
+          value: "rc1a-pkime06k4fu6r4s5.mdb.yandexcloud.net"
+        - name: POSTGRES_PORT
+          value: "6432"
+        - name: CLICKHOUSE_HOST
+          value: "rc1a-c2faoi7fo9nau7bk.mdb.yandexcloud.net"
+        - name: CLICKHOUSE_PORT
+          value: "9440"
+        - name: REDIS_HOST
+          value: "rc1a-05996dl9m93i5obm.mdb.yandexcloud.net"
+        - name: REDIS_PORT
+          value: "6379"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: edu-platform
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP
