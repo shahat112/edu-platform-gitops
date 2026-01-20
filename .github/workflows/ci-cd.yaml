@@ -1,0 +1,53 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY_ID: crp6c65n59o6pg6jfmvq
+  IMAGE_NAME: edu-platform-app
+
+jobs:
+  test-manifests:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Validate Kubernetes manifests
+      run: |
+        for file in kubernetes/applications/*.yaml; do
+          echo "Validating $file"
+          kubectl apply --dry-run=client -f "$file"
+        done
+
+  deploy-manifests:
+    needs: test-manifests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+    
+    - name: Apply manifests
+      run: |
+        # Применяем обновленные манифесты
+        for file in kubernetes/applications/*.yaml; do
+          kubectl apply -f "$file" || echo "Failed to apply $file"
+        done
+        
+        # Триггерим синхронизацию в ArgoCD
+        echo "Git push will trigger ArgoCD auto-sync"
