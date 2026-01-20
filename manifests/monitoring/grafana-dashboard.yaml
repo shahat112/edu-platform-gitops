@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-edu-platform
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  edu-platform.json: |-
+    {
+      "dashboard": {
+        "title": "Edu Platform Monitoring",
+        "panels": [
+          {
+            "title": "API Health",
+            "type": "stat",
+            "targets": [{
+              "expr": "up{app=\"edu-platform-api\"}",
+              "legendFormat": "{{pod}}"
+            }]
+          },
+          {
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [{
+              "expr": "rate(http_requests_total[5m])",
+              "legendFormat": "{{endpoint}}"
+            }]
+          }
+        ]
+      }
+    }

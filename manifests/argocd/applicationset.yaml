@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: edu-platform-apps
+  namespace: argocd
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/shahat112/edu-platform-gitops.git
+      revision: HEAD
+      directories:
+      - path: manifests/apps/*
+      - path: manifests/infrastructure/*
+      - path: manifests/monitoring/*
+  
+  template:
+    metadata:
+      name: '{{path.basename}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/shahat112/edu-platform-gitops.git
+        targetRevision: HEAD
+        path: '{{path}}'
+        directory:
+          recurse: true
+      
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: edu-platform
+      
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        syncOptions:
+        - CreateNamespace=true
+        - ApplyOutOfSyncOnly=true
+        
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+        - /spec/replicas
