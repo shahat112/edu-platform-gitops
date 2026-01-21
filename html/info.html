@@ -1,0 +1,19 @@
+{
+  "application": "CI/CD Demo Platform",
+  "environment": "production",
+  "deployment_method": "github_actions_yandex_lockbox",
+  "features": [
+    "idempotent_infrastructure",
+    "lockbox_secrets",
+    "automated_deployments",
+    "health_monitoring"
+  ],
+  "infrastructure": {
+    "kubernetes": "yandex_managed",
+    "database": "yandex_postgresql",
+    "registry": "yandex_container_registry",
+    "secrets": "yandex_lockbox"
+  },
+  "maintainer": "DevOps Team",
+  "repository": "https://github.com/YOUR-REPO/edu-platform-gitops"
+}

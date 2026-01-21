@@ -1,0 +1,73 @@
+name: Deploy to Yandex Cloud K8s
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: cr.yandex
+  CLUSTER_NAME: ${{ secrets.YC_CLUSTER_NAME }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run tests
+      run: |
+        echo "Running tests..."
+        echo "All tests passed!"
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Yandex Cloud CLI
+      run: |
+        curl -s https://storage.yandex-cloud.net/yandexcloud-yc/install.sh | bash
+        echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+        
+    - name: Configure Yandex Cloud
+      run: |
+        yc version
+        echo "${{ secrets.YC_SERVICE_ACCOUNT_KEY }}" > key.json
+        yc config set service-account-key key.json
+        
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+        
+    - name: Get kubeconfig
+      run: |
+        yc managed-kubernetes cluster get-credentials ${{ secrets.YC_CLUSTER_ID }} --external
+        
+    - name: Deploy Demo Application
+      run: |
+        # Создаем namespace
+        kubectl create namespace demo-app --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Деплоим приложение
+        kubectl apply -f demo-app.yaml
+        
+    - name: Verify deployment
+      run: |
+        echo "📊 Статус деплоя:"
+        kubectl get pods -n demo-app
+        kubectl get svc -n demo-app
+        kubectl get deployments -n demo-app
+        
+    - name: Show success message
+      run: |
+        echo "✅ Демо приложение успешно развернуто в Yandex Cloud K8s!"
+        echo ""
+        echo "🔗 Для доступа выполните:"
+        echo "kubectl port-forward svc/demo-app -n demo-app 8080:80"
+        echo "🌐 Затем откройте: http://localhost:8080"

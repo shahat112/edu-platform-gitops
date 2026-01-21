@@ -1,0 +1,80 @@
+---
+# Minimal Demo Application for CI/CD
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ci-demo-config
+data:
+  app.name: "CI/CD Demo"
+  app.version: "1.0.0"
+  deployment.type: "Minimal"
+  message: "Hello from GitHub Actions CI/CD!"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ci-demo-app
+  labels:
+    app: ci-demo
+    component: demo
+    managed-by: github-actions
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ci-demo
+  template:
+    metadata:
+      labels:
+        app: ci-demo
+        component: demo
+        managed-by: github-actions
+    spec:
+      containers:
+      - name: demo
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: APP_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: ci-demo-config
+              key: app.name
+        - name: APP_VERSION
+          valueFrom:
+            configMapKeyRef:
+              name: ci-demo-config
+              key: app.version
+        - name: DEPLOYMENT_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: ci-demo-config
+              key: deployment.type
+        - name: WELCOME_MESSAGE
+          valueFrom:
+            configMapKeyRef:
+              name: ci-demo-config
+              key: message
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "16Mi"
+          limits:
+            cpu: "50m"
+            memory: "32Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ci-demo-service
+  labels:
+    app: ci-demo
+    component: demo
+spec:
+  selector:
+    app: ci-demo
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP

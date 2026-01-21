@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api
+  namespace: edu-platform
+  labels:
+    app: backend
+    version: v1.0.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: v1.0.0
+    spec:
+      containers:
+      - name: backend
+        image: crp6c65n59o6pg6jfmvq/edu-backend:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: POSTGRES_URL
+          value: "postgres://postgres:password@postgres.default.svc.cluster.local:5432/edu_platform"
+        - name: REDIS_URL
+          value: "redis://redis.default.svc.cluster.local:6379"
+        - name: CLICKHOUSE_URL
+          value: "http://clickhouse.default.svc.cluster.local:8123"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10

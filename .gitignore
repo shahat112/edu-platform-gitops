@@ -1,92 +1,17 @@
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Secrets - НИКОГДА не коммитьте это!
-.env
-.env.local
-.env.*
-*.pem
-*.key
-*.json
-*secrets*.yaml
-*secrets*.yml
-credentials.yaml
-kubeconfig
-*.kubeconfig
-
-# Docker
-docker-compose.override.yml
-
-# Logs
-*.log
-logs/
-
-# Temporary
-tmp/
-temp/
-*.tmp
-
 # Terraform
-.terraform/
 *.tfstate
-*.tfstate.*
+*.tfstate.backup
+.terraform/
 terraform.tfvars
 
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-yarn.lock
+# Keys and secrets
+*.json
+sa-key-*
+key.json
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-pyvenv.cfg
-venv/
-env/
-.venv/
-pip-wheel-metadata/
+# Kubernetes
+kubeconfig*
 
-# Go
-vendor/
-*.exe
-*.test
-*.out
-
-# Binaries
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Test coverage
-coverage/
-htmlcov/
-.coverage
-*.cover
-*.lcov
-
-# Build artifacts
-dist/
-build/
-out/
-target/
-*.jar
-*.war
-*.ear
-
-# Kubernetes временные файлы
-.kube/
-.kubeconfig
+# Local files
+.DS_Store
+.env

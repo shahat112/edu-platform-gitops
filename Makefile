@@ -63,3 +63,24 @@ clean:  ## Очистить временные файлы
 @echo "🧹 Очистка временных файлов..."
 @find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 @find . -name "*.pyc" -delete
+
+# ==================== TEST COMMANDS ====================
+.PHONY: test-infra test-lb test-clean
+
+# Test infrastructure deployment
+test-infra: test-deploy test-check
+@echo "✅ Infrastructure test completed"
+
+# Test load balancer
+test-lb: test-deploy
+@echo "🌐 Load Balancer test - waiting 30 seconds for LB to propagate..."
+@sleep 30
+@echo "Run: curl http://\$$(terraform -C ../ output -raw lb_ip)/health"
+
+# Clean test resources
+test-clean:
+@kubectl delete -f apps/tests/loadbalancer.yaml --ignore-not-found=true
+@echo "🧹 Test resources cleaned"
+
+# Include test commands
+include Makefile.test

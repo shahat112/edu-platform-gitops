@@ -1,91 +1,36 @@
-# 🚀 GitOps CI/CD для учебной платформы
+# Demo App for CI/CD Testing
 
-Полностью автоматизированный GitOps пайплайн для развертывания учебной платформы в Yandex Cloud Kubernetes.
+Это минимальное приложение для демонстрации CI/CD процесса.
 
-## 📊 Архитектура
-Yandex Cloud Kubernetes (edu-cluster-82937)
-├── 🔄 ArgoCD (GitOps Operator)
-├── 📦 Приложения:
-│ ├── 🖥️ Backend API (Python/Node.js)
-│ ├── 🎨 Frontend (React/Vue)
-│ └── ⚙️ Workers (Celery/Background jobs)
-└── 🗄️ Инфраструктура:
-├── 🐘 PostgreSQL (основная БД)
-├── 🚀 Redis (кеш и сессии)
-├── 📊 ClickHouse (аналитика)
-└── 📈 Мониторинг (Prometheus/Grafana)
+## Структура
+.
+├── .github/workflows/
+│ └── deploy.yml # GitHub Actions workflow
+├── demo-app.yaml # Kubernetes манифесты
+└── README.md # Документация
 
 text
 
-## 🔄 CI/CD Пайплайн
+## Развертывание
 
-### 1. GitHub Actions CI
-- ✅ Сборка Docker образов
-- ✅ Запуск unit-тестов
-- ✅ Сканирование безопасности
-- ✅ Push в Container Registry
+1. При пуше в main ветку автоматически запускается деплоймент
+2. Приложение разворачивается в namespace `demo-app`
+3. Доступно по адресу: `demo-app.edu.local`
 
-### 2. ArgoCD GitOps CD
-- ✅ Автоматический деплой при изменениях в Git
-- ✅ Self-healing (автоматическое восстановление)
-- ✅ Rollback при ошибках
-- ✅ Визуализация состояния
+## Команды для ручного тестирования
 
-### 3. Мониторинг
-- ✅ Отслеживание деплоев
-- ✅ Мониторинг приложений
-- ✅ Алертинг
-
-## 📁 Структура репозитория
-├── 📁 .github/workflows/ # GitHub Actions CI/CD
-├── 📁 manifests/ # Kubernetes манифесты
-│ ├── 📁 argocd/ # ArgoCD конфигурации
-│ ├── 📁 apps/ # Манифесты приложений
-│ ├── 📁 infrastructure/ # БД и инфраструктура
-│ └── 📁 monitoring/ # Мониторинг
-├── 📁 apps/ # Исходный код
-│ ├── 📁 api/ # Backend приложение
-│ ├── 📁 frontend/ # Frontend приложение
-│ └── 📁 tests/ # Тесты
-├── 📁 charts/ # Helm charts
-├── 📁 scripts/ # Вспомогательные скрипты
-├── 📁 docs/ # Документация
-└── 📁 k8s/ # Kustomize манифесты
-
-text
-
-## 🚀 Быстрый старт
-
-### 1. Подготовка окружения
 ```bash
-git clone https://github.com/shahat112/edu-platform-gitops.git
-cd edu-platform-gitops
-2. Настройка секретов GitHub
-Установите секреты в Settings → Secrets and variables → Actions:
+# Проверить состояние приложения
+kubectl get pods -n demo-app
+kubectl get svc -n demo-app
+kubectl get ingress -n demo-app
 
-YC_SA_KEY - сервисный аккаунт Yandex Cloud
+# Посмотреть логи
+kubectl logs -l app=demo-app -n demo-app
 
-REGISTRY_PASSWORD - пароль Container Registry
+# Удалить приложение
+kubectl delete -f demo-app.yaml
+Переменные окружения для CI/CD
+Нужно установить в GitHub Secrets:
 
-KUBECONFIG - конфиг Kubernetes кластера
-
-3. Установка ArgoCD
-bash
-kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-4. Настройка ArgoCD
-bash
-kubectl apply -f manifests/argocd/
-🔧 Требования
-✅ Yandex Cloud аккаунт
-
-✅ Kubernetes кластер (edu-cluster-82937)
-
-✅ Container Registry
-
-✅ GitHub репозиторий
-
-✅ Сервисный аккаунт с правами
-
-📞 Контакты и поддержка
-Для настройки и вопросов обращайтесь к команде DevOps.
+KUBECONFIG - содержимое kubeconfig файла

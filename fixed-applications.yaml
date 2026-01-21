@@ -1,0 +1,66 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/shahat112/edu-platform-gitops.git
+    targetRevision: main
+    path: kubernetes/apps/demo-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: edu-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - PruneLast=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/shahat112/edu-platform-gitops.git
+    targetRevision: main
+    path: kubernetes/apps/backend-app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: edu-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - PruneLast=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: simple-demo
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/shahat112/edu-platform-gitops.git
+    targetRevision: main
+    path: kubernetes/apps/simple-demo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: edu-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+    - PruneLast=true

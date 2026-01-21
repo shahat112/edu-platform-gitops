@@ -1,0 +1,122 @@
+name: CI/CD with Yandex Lockbox
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: cr.yandex
+  REGISTRY_ID: ${{ secrets.REGISTRY_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Yandex Cloud CLI
+      uses: yc-actions/yc-setup@v2
+      with:
+        service-account-key: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+    
+    - name: Get secrets from Lockbox
+      id: lockbox
+      uses: yc-actions/yc-lockbox-secrets@v2
+      with:
+        secret-id: ${{ secrets.YC_LOCKBOX_SECRET_ID }}
+    
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Yandex Container Registry
+      run: |
+        yc container registry configure-docker
+        echo ${{ secrets.YC_DOCKER_AUTH }} | docker login \
+          --username json_key \
+          --password-stdin \
+          cr.yandex
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: |
+          cr.yandex/${{ secrets.YC_LOCKBOX_SECRET_ID }}/app:latest
+          cr.yandex/${{ secrets.YC_LOCKBOX_SECRET_ID }}/app:${{ github.sha }}
+    
+    - name: Configure kubectl
+      run: |
+        yc managed-kubernetes cluster get-credentials ${{ steps.lockbox.outputs.K8S_CLUSTER_ID }} --external
+        kubectl config set-cluster ${{ steps.lockbox.outputs.K8S_CLUSTER_ID }} \
+          --server=${{ steps.lockbox.outputs.K8S_ENDPOINT }}
+    
+    - name: Deploy to Kubernetes
+      run: |
+        # Создаем или обновляем deployment
+        cat > deployment.yaml << EOL
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: demo-app
+          namespace: default
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: demo-app
+          template:
+            metadata:
+              labels:
+                app: demo-app
+            spec:
+              containers:
+              - name: app
+                image: cr.yandex/${{ secrets.YC_LOCKBOX_SECRET_ID }}/app:${{ github.sha }}
+                ports:
+                - containerPort: 80
+                env:
+                - name: POSTGRES_HOST
+                  value: "${{ steps.lockbox.outputs.POSTGRES_HOST }}"
+                - name: APP_VERSION
+                  value: "${{ github.sha }}"
+        EOL
+        
+        kubectl apply -f deployment.yaml
+        
+        # Создаем service если его нет
+        cat > service.yaml << EOL
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: demo-app-service
+        spec:
+          type: NodePort
+          selector:
+            app: demo-app
+          ports:
+          - port: 80
+            targetPort: 80
+            nodePort: 30080
+        EOL
+        
+        kubectl apply -f service.yaml
+    
+    - name: Verify deployment
+      run: |
+        echo "🔍 Проверка состояния deployment..."
+        kubectl get deployments
+        kubectl get pods
+        kubectl get services
+        
+        echo "🌐 Проверка доступности приложения..."
+        sleep 10
+        NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+        curl -f http://$NODE_IP:30080/health || echo "Приложение ещё не готово"

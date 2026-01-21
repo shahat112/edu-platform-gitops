@@ -1,0 +1,125 @@
+name: Deploy to Yandex Cloud Kubernetes
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  REGISTRY: cr.yandex
+  IMAGE_NAME: ${{ secrets.YC_REGISTRY_ID }}/demo-app
+  KUBE_NAMESPACE: default
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Lint Kubernetes manifests
+      uses: stackrox/kube-linter-action@v1
+      with:
+        config: |
+          checks:
+            - "no-extensions-v1beta"
+            - "no-liveness-probe"
+            - "no-readiness-probe"
+            - "non-existent-service-account"
+            - "deprecated-service-account-field"
+            - "required-annotation-email"
+            - "dangling-service"
+            - "run-as-non-root"
+            - "unset-cpu-requirements"
+            - "unset-memory-requirements"
+            - "privileged-container"
+            - "sensitive-host-mounts"
+
+    - name: Validate Kubernetes manifests
+      run: |
+        kubectl apply --dry-run=client --validate=true -f demo-app.yaml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Set up kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 --decode > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Deploy the demo application
+        kubectl apply -f demo-app.yaml
+        
+        # Verify deployment
+        kubectl rollout status deployment/demo-app --timeout=3m
+        
+        # Display deployment info
+        echo "=== Deployment Status ==="
+        kubectl get deployment demo-app
+        
+        echo "=== Pods Status ==="
+        kubectl get pods -l app=demo-app
+        
+        echo "=== Service Status ==="
+        kubectl get service demo-app-service
+        
+        echo "=== Ingress Status ==="
+        kubectl get ingress demo-app-ingress
+
+  health-check:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Set up kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 --decode > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
+
+    - name: Perform health checks
+      run: |
+        # Check pods are running
+        POD_STATUS=$(kubectl get pods -l app=demo-app -o jsonpath='{.items[*].status.phase}')
+        echo "Pod statuses: $POD_STATUS"
+        
+        # Count running pods
+        RUNNING_PODS=$(echo "$POD_STATUS" | tr ' ' '\n' | grep -c "Running")
+        echo "Running pods: $RUNNING_PODS"
+        
+        # Check service endpoints
+        ENDPOINTS=$(kubectl get endpoints demo-app-service -o jsonpath='{.subsets[*].addresses[*].ip}')
+        echo "Service endpoints: $ENDPOINTS"
+        
+        # Basic curl test if possible
+        echo "Testing application..."
+        kubectl run test-curl --image=curlimages/curl --rm -it --restart=Never -- \
+          curl -s -o /dev/null -w "%{http_code}" http://demo-app-service:80 || true
+        
+        # Set deployment status
+        if [ "$RUNNING_PODS" -ge 2 ]; then
+          echo "✅ Deployment successful - all pods are running"
+        else
+          echo "❌ Deployment issue - not all pods are running"
+          exit 1
+        fi

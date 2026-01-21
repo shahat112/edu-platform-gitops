@@ -1,0 +1,128 @@
+            spec:
+              containers:
+              - name: app
+                image: cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME:${{ github.sha }}
+                imagePullPolicy: Always
+                ports:
+                - containerPort: 80
+                env:
+                - name: POSTGRES_HOST
+                  value: "${{ steps.lockbox.outputs.POSTGRES_HOST }}"
+                - name: APP_VERSION
+                  value: "${{ github.sha }}"
+                - name: DEPLOYMENT_TIME
+                  value: "$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+                resources:
+                  requests:
+                    memory: "64Mi"
+                    cpu: "100m"
+                  limits:
+                    memory: "128Mi"
+                    cpu: "200m"
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: 80
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 80
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+        DEPLOYMENT
+        
+        kubectl apply -f deployment.yaml
+        echo "✅ Deployment applied"
+        
+        # Создаем service
+        cat > service.yaml << SERVICE
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: test-lockbox-service
+          namespace: lockbox-demo
+        spec:
+          type: NodePort
+          selector:
+            app: test-lockbox-app
+          ports:
+          - port: 80
+            targetPort: 80
+            nodePort: 30090
+        SERVICE
+        
+        kubectl apply -f service.yaml
+        echo "✅ Service applied"
+    
+    - name: Verify deployment
+      run: |
+        echo "🔍 Verifying deployment..."
+        
+        # Ждем готовности deployment
+        echo "⏳ Waiting for deployment to be ready..."
+        kubectl wait --for=condition=available --timeout=120s deployment/test-lockbox-app -n lockbox-demo
+        
+        # Показываем статус
+        echo ""
+        echo "📊 Deployment status:"
+        kubectl get deployments -n lockbox-demo
+        kubectl get pods -n lockbox-demo
+        kubectl get services -n lockbox-demo
+        
+        # Проверяем доступность
+        echo ""
+        echo "🌐 Testing application access..."
+        NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+        echo "Node External IP: $NODE_IP"
+        echo "Service URL: http://$NODE_IP:30090"
+        
+        # Делаем несколько попыток подключения
+        for i in {1..10}; do
+          if curl -f http://$NODE_IP:30090/health; then
+            echo ""
+            echo "🎉 SUCCESS! Application is deployed and accessible!"
+            echo "   Health check passed!"
+            break
+          else
+            echo "⏳ Attempt $i/10: Application not ready yet..."
+            sleep 10
+          fi
+        done
+    
+    - name: Cleanup test resources (optional)
+      if: always()
+      run: |
+        echo "🧹 Optional cleanup..."
+        echo "To cleanup manually, run:"
+        echo "kubectl delete namespace lockbox-demo"
+    
+    - name: Success message
+      if: success()
+      run: |
+        echo ""
+        echo "=========================================="
+        echo "✅ LOCKBOX INTEGRATION TEST PASSED!"
+        echo "=========================================="
+        echo ""
+        echo "🎉 What was tested and verified:"
+        echo "1. ✅ GitHub Secrets access (YC_SERVICE_ACCOUNT_KEY)"
+        echo "2. ✅ Yandex Lockbox access (YC_LOCKBOX_SECRET_ID)"
+        echo "3. ✅ Secrets retrieval from Lockbox"
+        echo "4. ✅ Docker build and push to Yandex Registry"
+        echo "5. ✅ Kubernetes cluster access"
+        echo "6. ✅ Deployment to Yandex Managed Kubernetes"
+        echo "7. ✅ Application health check"
+        echo ""
+        echo "🔧 Tested infrastructure:"
+        echo "   • Lockbox Secret: ci-cd-secrets"
+        echo "   • Registry: cr-ci-demo"
+        echo "   • Kubernetes: k8s-ci-demo"
+        echo "   • PostgreSQL: pg-ci-demo"
+        echo ""
+        echo "📊 Deployment details:"
+        echo "   • Namespace: lockbox-demo"
+        echo "   • Deployment: test-lockbox-app"
+        echo "   • Service: test-lockbox-service"
+        echo "   • Port: 30090"

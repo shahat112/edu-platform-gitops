@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/shahat112/edu-platform-gitops.git
+    targetRevision: main
+    path: kubernetes/apps/demo-app
+    directory: {}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: edu-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true

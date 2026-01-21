@@ -1,0 +1,40 @@
+.PHONY: test-deploy test-clean test-check lb-test
+
+# Deploy test application
+test-deploy:
+@echo "🚀 Deploying Load Balancer Test Application..."
+@kubectl apply -f apps/tests/loadbalancer.yaml
+@sleep 5
+@echo "📊 Checking status..."
+@kubectl get pods,svc -n edu-platform-test
+
+# Clean test application
+test-clean:
+@echo "🧹 Cleaning test application..."
+@kubectl delete -f apps/tests/loadbalancer.yaml --ignore-not-found=true
+
+# Check test application status
+test-check:
+@echo "🔍 Checking test application..."
+@kubectl get pods -n edu-platform-test -o wide
+@kubectl get svc -n edu-platform-test
+@echo ""
+@echo "📝 Pod details:"
+@kubectl describe pods -n edu-platform-test -l app=loadbalancer-test | grep -A5 "Status:"
+
+# Test load balancer connectivity
+lb-test:
+@echo "🌐 Testing Load Balancer connectivity..."
+@echo "Note: Run 'terraform output lb_ip' to get Load Balancer IP"
+@echo "Then run: curl http://<LB_IP>/health"
+@echo ""
+
+# Port forward for local testing
+test-port-forward:
+@echo "🔌 Port forwarding to test application..."
+@kubectl port-forward svc/loadbalancer-test-service 8080:80 -n edu-platform-test
+
+# View logs
+test-logs:
+@echo "📋 Viewing logs..."
+@kubectl logs -l app=loadbalancer-test -n edu-platform-test --tail=20 -f

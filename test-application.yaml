@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: test-path
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/shahat112/edu-platform-gitops.git
+    targetRevision: main
+    path: .  # Проверим корень репозитория
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: edu-platform

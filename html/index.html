@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>✅ CI/CD Demo - Yandex Lockbox</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            color: #4ade80;
+            text-align: center;
+        }
+        .status {
+            background: rgba(76, 175, 80, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .info-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        .endpoints {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .endpoint {
+            background: rgba(59, 130, 246, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        a {
+            color: #93c5fd;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎉 CI/CD Demo Application</h1>
+        
+        <div class="status">
+            <h2>✅ Successfully Deployed!</h2>
+            <p>Deployed via GitHub Actions with Yandex Cloud Lockbox integration</p>
+        </div>
+        
+        <div class="info-card">
+            <h3>📊 Deployment Information</h3>
+            <p><strong>Timestamp:</strong> <span id="timestamp"></span></p>
+            <p><strong>Commit SHA:</strong> <span id="commit-sha">${{ github.sha }}</span></p>
+            <p><strong>Secrets Source:</strong> Yandex Cloud Lockbox</p>
+            <p><strong>Infrastructure:</strong> Idempotent Terraform</p>
+        </div>
+        
+        <div class="endpoints">
+            <div class="endpoint">
+                <h4>🏠 Home</h4>
+                <p><a href="/">/</a></p>
+            </div>
+            <div class="endpoint">
+                <h4>❤️ Health Check</h4>
+                <p><a href="/health">/health</a></p>
+            </div>
+            <div class="endpoint">
+                <h4>🔧 System Info</h4>
+                <p><a href="/info">/info</a></p>
+            </div>
+            <div class="endpoint">
+                <h4>📝 Documentation</h4>
+                <p><a href="/docs">/docs</a></p>
+            </div>
+        </div>
+        
+        <div class="info-card">
+            <h3>🏗️ Architecture</h3>
+            <ul>
+                <li><strong>GitHub Actions:</strong> CI/CD Pipeline</li>
+                <li><strong>Yandex Lockbox:</strong> Secure Secrets Storage</li>
+                <li><strong>Yandex Kubernetes:</strong> Container Orchestration</li>
+                <li><strong>Yandex Registry:</strong> Container Registry</li>
+                <li><strong>PostgreSQL:</strong> Managed Database</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        // Устанавливаем timestamp
+        document.getElementById('timestamp').textContent = new Date().toISOString();
+        
+        // Если есть commit SHA из GitHub Actions
+        const urlParams = new URLSearchParams(window.location.search);
+        const commitSha = urlParams.get('sha') || '${{ github.sha }}'.slice(0, 7);
+        if (commitSha && commitSha !== '${{ github.sha }}') {
+            document.getElementById('commit-sha').textContent = commitSha;
+        }
+    </script>
+</body>
+</html>

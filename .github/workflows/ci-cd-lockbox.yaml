@@ -1,0 +1,195 @@
+name: CI/CD with Yandex Lockbox
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'k8s-manifests/**'
+      - 'Dockerfile'
+      - 'html/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Ручной запуск
+
+env:
+  REGISTRY: cr.yandex
+  IMAGE_NAME: demo-app
+  LOCKBOX_SECRET_ID: ${{ secrets.YC_LOCKBOX_SECRET_ID }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Yandex Cloud CLI
+      uses: yc-actions/yc-setup@v2
+      with:
+        service-account-key: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+    
+    - name: Get secrets from Lockbox
+      id: lockbox
+      uses: yc-actions/yc-lockbox-secrets@v2
+      with:
+        secret-id: ${{ secrets.YC_LOCKBOX_SECRET_ID }}
+    
+    - name: Debug - Show Lockbox secrets
+      run: |
+        echo "=== Lockbox Secrets ==="
+        echo "Registry ID: ${{ steps.lockbox.outputs.REGISTRY_ID }}"
+        echo "K8S Cluster ID: ${{ steps.lockbox.outputs.K8S_CLUSTER_ID }}"
+        echo "K8S Endpoint: ${{ steps.lockbox.outputs.K8S_ENDPOINT }}"
+        echo "PostgreSQL Host: ${{ steps.lockbox.outputs.POSTGRES_HOST }}"
+        echo "Service Account ID: ${{ steps.lockbox.outputs.SERVICE_ACCOUNT_ID }}"
+    
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Login to Yandex Container Registry
+      run: |
+        yc container registry configure-docker
+        echo '${{ secrets.YC_SERVICE_ACCOUNT_KEY }}' | docker login \
+          --username json_key \
+          --password-stdin \
+          cr.yandex
+    
+    - name: Build Docker image
+      run: |
+        docker build \
+          --tag cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME:${{ github.sha }} \
+          --tag cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME:latest \
+          .
+    
+    - name: Push Docker image
+      run: |
+        docker push cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME:${{ github.sha }}
+        docker push cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME:latest
+    
+    - name: Configure kubectl
+      run: |
+        # Настраиваем доступ к Kubernetes
+        yc managed-kubernetes cluster get-credentials ${{ steps.lockbox.outputs.K8S_CLUSTER_ID }} --external
+        
+        # Проверяем подключение
+        kubectl cluster-info
+        kubectl get nodes
+    
+    - name: Deploy to Kubernetes
+      run: |
+        # Создаем или обновляем deployment с переменными из Lockbox
+        cat > /tmp/deployment.yaml << DEPLOYMENT
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: demo-app
+          namespace: default
+          labels:
+            app: demo-app
+        spec:
+          replicas: 2
+          selector:
+            matchLabels:
+              app: demo-app
+          template:
+            metadata:
+              labels:
+                app: demo-app
+            spec:
+              containers:
+              - name: app
+                image: cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME:${{ github.sha }}
+                imagePullPolicy: Always
+                ports:
+                - containerPort: 80
+                env:
+                - name: POSTGRES_HOST
+                  value: "${{ steps.lockbox.outputs.POSTGRES_HOST }}"
+                - name: APP_VERSION
+                  value: "${{ github.sha }}"
+                - name: DEPLOYMENT_TIME
+                  value: "$(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+                resources:
+                  requests:
+                    memory: "64Mi"
+                    cpu: "100m"
+                  limits:
+                    memory: "128Mi"
+                    cpu: "200m"
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: 80
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 80
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+        DEPLOYMENT
+        
+        kubectl apply -f /tmp/deployment.yaml
+        echo "✅ Deployment applied"
+        
+        # Создаем service если его нет
+        cat > /tmp/service.yaml << SERVICE
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: demo-app-service
+        spec:
+          type: NodePort
+          selector:
+            app: demo-app
+          ports:
+          - port: 80
+            targetPort: 80
+            nodePort: 30080
+        SERVICE
+        
+        kubectl apply -f /tmp/service.yaml
+        echo "✅ Service applied"
+    
+    - name: Verify deployment
+      run: |
+        echo "🔍 Проверка состояния deployment..."
+        kubectl wait --for=condition=available --timeout=60s deployment/demo-app
+        kubectl get deployments
+        kubectl get pods
+        kubectl get services
+        
+        echo "🌐 Проверка доступности приложения..."
+        sleep 10
+        NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+        echo "Node IP: $NODE_IP"
+        
+        # Пробуем сделать запрос к приложению
+        for i in {1..10}; do
+          if curl -f http://$NODE_IP:30080/health; then
+            echo "✅ Приложение успешно развернуто и доступно!"
+            break
+          else
+            echo "⏳ Приложение ещё не готово, попытка $i/10..."
+            sleep 5
+          fi
+        done
+    
+    - name: Cleanup old images
+      if: success()
+      run: |
+        # Удаляем старые образы (оставляем последние 5)
+        echo "🧹 Очистка старых Docker образов..."
+        docker images cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME --format "{{.Tag}}" | \
+          grep -v "latest" | \
+          sort -V | \
+          head -n -5 | \
+          xargs -I {} docker rmi cr.yandex/${{ steps.lockbox.outputs.REGISTRY_ID }}/$IMAGE_NAME:{} 2>/dev/null || true

@@ -1,0 +1,255 @@
+---
+# Тестовое приложение для проверки Load Balancer в Yandex Cloud
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edu-platform-test
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: edu-platform-test
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+        
+        location = /health {
+            access_log off;
+            add_header Content-Type text/plain;
+            return 200 "healthy\n";
+        }
+        
+        location = /lb-test {
+            add_header Content-Type text/plain;
+            return 200 "Load Balancer Test OK\nHost: $host\nPod: $http_x_pod_name\n";
+        }
+        
+        location / {
+            root /usr/share/nginx/html;
+            index index.html index.htm;
+            try_files $uri $uri/ =404;
+        }
+        
+        # Для отладки
+        location = /debug {
+            add_header Content-Type text/plain;
+            return 200 "Pod: $http_x_pod_name\nRemote: $remote_addr\nHost: $host\n";
+        }
+    }
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Edu Platform - Load Balancer Test</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+            .status { padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 5px solid; }
+            .healthy { background: #d4edda; border-color: #28a745; color: #155724; }
+            .info { background: #d1ecf1; border-color: #17a2b8; color: #0c5460; }
+            .warning { background: #fff3cd; border-color: #ffc107; color: #856404; }
+            code { background: #f8f9fa; padding: 2px 5px; border-radius: 3px; }
+        </style>
+    </head>
+    <body>
+        <h1>🎓 Educational Platform - Load Balancer Test</h1>
+        
+        <div class="status info">
+            <strong>Load Balancer Integration Test</strong><br>
+            This application tests the Load Balancer configuration.
+        </div>
+        
+        <div class="status healthy">
+            <strong>Status: HEALTHY ✓</strong><br>
+            Pod: <code id="pod-name">${HOSTNAME}</code>
+        </div>
+        
+        <h2>Test Endpoints:</h2>
+        <ul>
+            <li><a href="/health">/health</a> - Health check endpoint</li>
+            <li><a href="/lb-test">/lb-test</a> - Load Balancer test</li>
+            <li><a href="/debug">/debug</a> - Debug information</li>
+        </ul>
+        
+        <h2>System Information:</h2>
+        <p><strong>Time:</strong> <span id="time"></span></p>
+        <p><strong>Load Balancer IP:</strong> <code id="lb-ip">check output of: terraform output lb_ip</code></p>
+        
+        <div class="status warning">
+            <strong>Testing Instructions:</strong>
+            <ol>
+                <li>Get Load Balancer IP: <code>terraform output lb_ip</code></li>
+                <li>Test health: <code>curl http://[LB_IP]/health</code></li>
+                <li>Test LB: <code>curl http://[LB_IP]/lb-test</code></li>
+            </ol>
+        </div>
+        
+        <script>
+            function updateTime() {
+                document.getElementById('time').textContent = new Date().toLocaleString();
+            }
+            
+            // Показываем имя пода
+            document.getElementById('pod-name').textContent = '${HOSTNAME}';
+            
+            updateTime();
+            setInterval(updateTime, 1000);
+        </script>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadbalancer-test
+  namespace: edu-platform-test
+  labels:
+    app: loadbalancer-test
+    component: infrastructure-test
+    managed-by: terraform
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: loadbalancer-test
+  template:
+    metadata:
+      labels:
+        app: loadbalancer-test
+        component: infrastructure-test
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25-alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+        - name: html-content
+          mountPath: /usr/share/nginx/html
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: html-content
+        configMap:
+          name: nginx-config
+          items:
+          - key: index.html
+            path: index.html
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loadbalancer-test-service
+  namespace: edu-platform-test
+  labels:
+    app: loadbalancer-test
+    service-type: nodeport
+  annotations:
+    # Для Yandex Cloud Load Balancer
+    yandex.cloud/load-balancer-healthcheck-path: "/health"
+    yandex.cloud/load-balancer-healthcheck-port: "30080"
+spec:
+  type: NodePort
+  selector:
+    app: loadbalancer-test
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    nodePort: 30080
+  sessionAffinity: ClientIP
+---
+# DaemonSet для гарантии запуска на каждой ноде
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: loadbalancer-test-daemon
+  namespace: edu-platform-test
+  labels:
+    app: loadbalancer-test-daemon
+    component: infrastructure-test
+spec:
+  selector:
+    matchLabels:
+      app: loadbalancer-test-daemon
+  template:
+    metadata:
+      labels:
+        app: loadbalancer-test-daemon
+        component: infrastructure-test
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25-alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+        - name: html-content
+          mountPath: /usr/share/nginx/html
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "10m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: html-content
+        configMap:
+          name: nginx-config
+          items:
+          - key: index.html
+            path: index.html

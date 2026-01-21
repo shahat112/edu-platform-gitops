@@ -1,0 +1,145 @@
+name: Full CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Run linters
+      run: |
+        echo "Running code quality checks..."
+        # Здесь могут быть линтеры для разных языков
+        
+    - name: Run unit tests
+      run: |
+        echo "Running unit tests..."
+        # Здесь могут быть тесты
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Yandex Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SERVICE_ACCOUNT_KEY }}
+    
+    - name: Build and push Frontend
+      run: |
+        docker build -t cr.yandex/crp6c65n59o6pg6jfmvq/edu-frontend:${{ github.sha }} -f Dockerfile.frontend .
+        docker push cr.yandex/crp6c65n59o6pg6jfmvq/edu-frontend:${{ github.sha }}
+        docker tag cr.yandex/crp6c65n59o6pg6jfmvq/edu-frontend:${{ github.sha }} cr.yandex/crp6c65n59o6pg6jfmvq/edu-frontend:latest
+        docker push cr.yandex/crp6c65n59o6pg6jfmvq/edu-frontend:latest
+    
+    - name: Build and push Backend
+      run: |
+        docker build -t cr.yandex/crp6c65n59o6pg6jfmvq/edu-backend:${{ github.sha }} -f Dockerfile.backend .
+        docker push cr.yandex/crp6c65n59o6pg6jfmvq/edu-backend:${{ github.sha }}
+        docker tag cr.yandex/crp6c65n59o6pg6jfmvq/edu-backend:${{ github.sha }} cr.yandex/crp6c65n59o6pg6jfmvq/edu-backend:latest
+        docker push cr.yandex/crp6c65n59o6pg6jfmvq/edu-backend:latest
+    
+    - name: Build and push API
+      run: |
+        docker build -t cr.yandex/crp6c65n59o6pg6jfmvq/edu-api:${{ github.sha }} -f Dockerfile.api .
+        docker push cr.yandex/crp6c65n59o6pg6jfmvq/edu-api:${{ github.sha }}
+        docker tag cr.yandex/crp6c65n59o6pg6jfmvq/edu-api:${{ github.sha }} cr.yandex/crp6c65n59o6pg6jfmvq/edu-api:latest
+        docker push cr.yandex/crp6c65n59o6pg6jfmvq/edu-api:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+    
+    - name: Configure kubectl
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+        kubectl cluster-info
+    
+    - name: Deploy applications
+      run: |
+        echo "🚀 Starting deployment..."
+        
+        # Обновляем образы в манифестах
+        export IMAGE_TAG=${{ github.sha }}
+        
+        # Deploy Frontend
+        kubectl apply -f apps/frontend/manifests/ -n edu-platform
+        kubectl set image deployment/frontend-app frontend=cr.yandex/crp6c65n59o6pg6jfmvq/edu-frontend:$IMAGE_TAG -n edu-platform
+        
+        # Deploy Backend
+        kubectl apply -f apps/backend/manifests/ -n edu-platform
+        kubectl set image deployment/backend-api backend=cr.yandex/crp6c65n59o6pg6jfmvq/edu-backend:$IMAGE_TAG -n edu-platform
+        
+        # Deploy API
+        kubectl apply -f apps/api/manifests/ -n edu-platform
+        kubectl set image deployment/api-service api=cr.yandex/crp6c65n59o6pg6jfmvq/edu-api:$IMAGE_TAG -n edu-platform
+        
+        # Deploy Ingress
+        kubectl apply -f apps/ingress.yaml -n edu-platform
+        
+        echo "✅ Deployment completed!"
+        
+    - name: Verify deployment
+      run: |
+        echo "🔍 Verifying deployment..."
+        sleep 30
+        
+        # Check pods
+        kubectl get pods -n edu-platform
+        
+        # Check services
+        kubectl get svc -n edu-platform
+        
+        # Check ingress
+        kubectl get ingress -n edu-platform
+        
+        # Check rollout status
+        kubectl rollout status deployment/frontend-app -n edu-platform --timeout=120s
+        kubectl rollout status deployment/backend-api -n edu-platform --timeout=120s
+        kubectl rollout status deployment/api-service -n edu-platform --timeout=120s
+        
+        echo "✅ Verification completed!"
+
+  post-deploy:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+    
+    steps:
+    - name: Send notification
+      run: |
+        if [ "${{ needs.deploy.result }}" == "success" ]; then
+          echo "✅ Deployment successful!"
+          # Здесь можно отправить уведомление в Slack/Telegram
+        else
+          echo "❌ Deployment failed!"
+          # Отправка уведомления об ошибке
+        fi
